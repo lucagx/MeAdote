@@ -11,10 +11,11 @@ import { AuthModule } from './services/auth/auth.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env', 
     }),
     FirebaseModule,
-    AnimaisModule,
     AuthModule,
+    AnimaisModule,
   ],
   controllers: [AppController],
   providers: [AppService],
