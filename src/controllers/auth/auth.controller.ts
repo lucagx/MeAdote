@@ -6,6 +6,8 @@ import {
   Req,
   HttpException,
   HttpStatus,
+  Get,
+  Put,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import {
@@ -31,7 +33,7 @@ declare module 'express' {
 @Controller('auth')
 @ApiTags('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('register')
   @ApiOperation({ summary: 'Registrar um novo usuário' })
@@ -40,12 +42,12 @@ export class AuthController {
   async register(@Body() registerDto: RegisterDto) {
     try {
       const { email, password, ...userData } = registerDto;
-      const uid = await this.authService.registrar(
+      const user = await this.authService.registrar(
         email,
         password,
         userData as Partial<User>,
       );
-      return { uid };
+      return user;
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : 'Erro ao cadastrar usuário';
@@ -105,5 +107,27 @@ export class AuthController {
   verifyToken(@Req() request: Request) {
     // O token já foi verificado pelo AuthGuard
     return { user: request.user as User };
+  }
+
+  @UseGuards(AuthGuard)
+  @Get('me')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Obter dados do perfil do usuário autenticado' })
+  @ApiResponse({ status: 200, description: 'Dados do usuário' })
+  async getProfile(@Req() request: Request) {
+    return { user: request.user as User };
+  }
+
+  @UseGuards(AuthGuard)
+  @Put('me')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Atualizar dados do perfil do usuário autenticado' })
+  @ApiResponse({ status: 200, description: 'Perfil atualizado' })
+  async updateProfile(@Req() request: Request, @Body() update: Partial<User>) {
+    const db = this.authService['firebaseService'].getFirestore();
+    const uid = (request.user as User).uid;
+    await db.collection('users').doc(uid).update(update);
+    const userDoc = await db.collection('users').doc(uid).get();
+    return { user: userDoc.data() };
   }
 }

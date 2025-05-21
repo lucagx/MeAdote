@@ -6,26 +6,40 @@ import { FirebaseService } from '../../config/firebase/firebase.service';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly firebaseService: FirebaseService) {}
+  constructor(private readonly firebaseService: FirebaseService) { }
 
   async registrar(email: string, password: string, userData: Partial<User>) {
     try {
       const userRecord = await this.firebaseService.getAuth().createUser({
         email,
         password,
-        displayName: userData.displayName,
+        displayName:
+          userData.displayName ||
+          `${userData.nome ?? ''} ${userData.sobrenome ?? ''}`.trim(),
       });
       const db = this.firebaseService.getFirestore();
-      await db
-        .collection('users')
-        .doc(userRecord.uid)
-        .set({
-          ...userData,
-          uid: userRecord.uid,
-          createdAt: new Date(),
-        });
+      const userDoc = {
+        uid: userRecord.uid,
+        email,
+        nome: userData.nome ?? '',
+        sobrenome: userData.sobrenome ?? '',
+        telefone: userData.telefone ?? '',
+        displayName:
+          userData.displayName ||
+          `${userData.nome ?? ''} ${userData.sobrenome ?? ''}`.trim(),
+        userType: userData.userType ?? 'adotante',
+        address: userData.address ?? '',
+        createdAt: new Date(),
+        bairro: userData.bairro ?? '',
+        cidade: userData.cidade ?? '',
+        estado: userData.estado ?? '',
+        cep: userData.cep ?? '',
+        nascimento: userData.nascimento ?? '',
+        genero: userData.genero ?? '',
+      };
+      await db.collection('users').doc(userRecord.uid).set(userDoc);
 
-      return userRecord.uid;
+      return userDoc;
     } catch (error) {
       console.error('Erro durente cadastro:', error);
       throw new Error('Erro ao cadastrar usuário');
@@ -52,8 +66,6 @@ export class AuthService {
         throw new Error('Email inválido');
       }
 
-      console.log('Attempting login with email:', trimmedEmail);
-
       const userRecord = await this.firebaseService
         .getAuth()
         .getUserByEmail(trimmedEmail);
@@ -65,7 +77,17 @@ export class AuthService {
         .getAuth()
         .createCustomToken(userRecord.uid);
 
-      return { token, user: userRecord };
+      const db = this.firebaseService.getFirestore();
+      const userDocSnap = await db
+        .collection('users')
+        .doc(userRecord.uid)
+        .get();
+      const userDoc = userDocSnap.exists ? userDocSnap.data() : {};
+
+      return {
+        token,
+        user: { ...userDoc, uid: userRecord.uid, email: userRecord.email },
+      };
     } catch (error) {
       console.error('Erro ao fazer login:', error);
       throw new Error('Erro ao fazer login');

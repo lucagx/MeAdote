@@ -22,23 +22,22 @@ export class RegisterDto {
   password: string;
 
   @ApiProperty({
-    description: 'Nome de exibição',
-    example: 'João Silva',
+    description: 'Nome do usuário',
+    example: 'João',
     required: false,
   })
   @IsString()
   @IsOptional()
-  displayName?: string;
+  nome?: string;
 
   @ApiProperty({
-    description: 'Tipo de usuário',
-    enum: UserType,
-    example: UserType.ADOTANTE,
+    description: 'Sobrenome do usuário',
+    example: 'Silva',
+    required: false,
   })
-  @IsEnum(UserType, {
-    message: 'userType must be either "adotante" or "abrigo"',
-  })
-  userType: UserType;
+  @IsString()
+  @IsOptional()
+  sobrenome?: string;
 
   @ApiProperty({
     description: 'Telefone do usuário',
@@ -47,7 +46,28 @@ export class RegisterDto {
   })
   @IsString()
   @IsOptional()
-  phone?: string;
+  telefone?: string;
+
+  @ApiProperty({
+    description: 'Tipo de usuário',
+    enum: UserType,
+    example: UserType.ADOTANTE,
+    required: false,
+  })
+  @IsEnum(UserType, {
+    message: 'userType must be either "adotante" or "abrigo"',
+  })
+  @IsOptional()
+  userType?: UserType;
+
+  @ApiProperty({
+    description: 'Nome de exibição',
+    example: 'João Silva',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  displayName?: string;
 
   @ApiProperty({
     description: 'Endereço do usuário',
