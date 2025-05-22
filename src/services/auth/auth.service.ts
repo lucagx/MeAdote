@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 
 import type { User } from '../../models/user.model';
@@ -6,17 +6,19 @@ import { FirebaseService } from '../../config/firebase/firebase.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(private readonly firebaseService: FirebaseService) { }
 
   async registrar(email: string, password: string, userData: Partial<User>) {
+    this.logger.log(`Tentando registrar usuário: ${email}`);
     try {
-      const userRecord = await this.firebaseService.getAuth().createUser({
-        email,
-        password,
-        displayName:
-          userData.displayName ||
-          `${userData.nome ?? ''} ${userData.sobrenome ?? ''}`.trim(),
-      });
+      // O usuário já foi criado pelo Firebase Auth no frontend.
+      // Recupere o usuário pelo email para obter o uid.
+      const userRecord = await this.firebaseService
+        .getAuth()
+        .getUserByEmail(email);
+
       const db = this.firebaseService.getFirestore();
       const userDoc = {
         uid: userRecord.uid,
@@ -39,26 +41,36 @@ export class AuthService {
       };
       await db.collection('users').doc(userRecord.uid).set(userDoc);
 
+      this.logger.log(
+        `Usuário registrado com sucesso: ${email} (uid: ${userRecord.uid})`,
+      );
       return userDoc;
     } catch (error) {
-      console.error('Erro durente cadastro:', error);
+      this.logger.error(
+        `Erro durante cadastro do usuário ${email}: ${error instanceof Error ? error.message : error}`,
+      );
       throw new Error('Erro ao cadastrar usuário');
     }
   }
 
   async validarToken(token: string) {
+    this.logger.log('Validando token de autenticação');
     try {
       const decodedToken = await this.firebaseService
         .getAuth()
         .verifyIdToken(token);
+      this.logger.log('Token válido');
       return decodedToken;
     } catch (error) {
-      console.error('Erro ao validar token:', error);
+      this.logger.error(
+        `Erro ao validar token: ${error instanceof Error ? error.message : error}`,
+      );
       throw new Error('Token inválido ou expirado');
     }
   }
 
   async login(email: string) {
+    this.logger.log(`Tentando login para: ${email}`);
     try {
       const trimmedEmail = email?.trim();
 
@@ -84,12 +96,17 @@ export class AuthService {
         .get();
       const userDoc = userDocSnap.exists ? userDocSnap.data() : {};
 
+      this.logger.log(
+        `Login bem-sucedido para: ${email} (uid: ${userRecord.uid})`,
+      );
       return {
         token,
         user: { ...userDoc, uid: userRecord.uid, email: userRecord.email },
       };
     } catch (error) {
-      console.error('Erro ao fazer login:', error);
+      this.logger.error(
+        `Erro ao fazer login para ${email}: ${error instanceof Error ? error.message : error}`,
+      );
       throw new Error('Erro ao fazer login');
     }
   }
@@ -97,6 +114,7 @@ export class AuthService {
     token: string,
     provider: 'google' | 'facebook',
   ): Promise<User> {
+    this.logger.log(`Validando token social para provider: ${provider}`);
     try {
       const decodedToken = await this.firebaseService
         .getAuth()
@@ -130,9 +148,14 @@ export class AuthService {
       if (!userDoc.exists) {
         throw new Error('User document not found');
       }
+      this.logger.log(
+        `Token social válido para usuário: ${userRecord.email} (uid: ${userRecord.uid})`,
+      );
       return userDoc.data() as User;
     } catch (error) {
-      console.error(`Erro validando token ${provider}:`, error);
+      this.logger.error(
+        `Erro validando token ${provider}: ${error instanceof Error ? error.message : error}`,
+      );
       throw new Error(`Falha na autenticação com ${provider}`);
     }
   }
