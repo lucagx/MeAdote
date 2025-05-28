@@ -7,7 +7,7 @@ export class FirebaseService implements OnModuleInit {
   private firebaseApp: admin.app.App;
   private readonly logger = new Logger(FirebaseService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   async onModuleInit(): Promise<admin.app.App> {
     try {
@@ -49,6 +49,7 @@ export class FirebaseService implements OnModuleInit {
             credential: admin.credential.cert(
               serviceAccount as admin.ServiceAccount,
             ),
+            storageBucket: this.configService.get<string>('FIREBASE_STORAGE_BUCKET'),
           },
           'me-adote-app',
         );
@@ -71,21 +72,21 @@ export class FirebaseService implements OnModuleInit {
     }
   }
 
-  getFirestore() {
+  getFirestore(): admin.firestore.Firestore {
     if (!this.firebaseApp) {
       throw new Error('Firebase app não foi inicializado');
     }
     return this.firebaseApp.firestore();
   }
 
-  getAuth() {
+  getAuth(): admin.auth.Auth {
     if (!this.firebaseApp) {
       throw new Error('Firebase app não foi inicializado');
     }
     return this.firebaseApp.auth();
   }
 
-  getStorage() {
+  getStorage(): admin.storage.Storage {
     if (!this.firebaseApp) {
       throw new Error('Firebase app não foi inicializado');
     }
