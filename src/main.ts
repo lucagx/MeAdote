@@ -9,7 +9,6 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   const configService = app.get(ConfigService);
-  console.log('FIREBASE_PROJECT_ID:', configService.get('FIREBASE_PROJECT_ID'));
 
   app.useGlobalPipes(
     new ValidationPipe({

@@ -9,21 +9,20 @@ export class CreatePublicationDto {
   @IsString()
   text: string;
 
-  @ApiProperty({
-    description: 'Arquivos de mídia (máximo 5)',
-    type: 'array',
-    items: {
-      type: 'string',
-      format: 'binary',
-    },
-    required: false,
-  })
-  @IsOptional()
-  files?: any[];
+  // @ApiProperty({
+  //   description: 'Arquivos de mídia (máximo 5)',
+  //   type: 'array',
+  //   items: {
+  //     type: 'string',
+  //     format: 'binary',
+  //   },
+  //   required: false,
+  // })
+  // @IsOptional()
+  // files?: any[];
 
   @ApiProperty({
     description: 'URLs das mídias (usado internamente)',
-    example: ['https://storage.googleapis.com/bucket/image1.jpg'],
     required: false,
   })
   @IsOptional()

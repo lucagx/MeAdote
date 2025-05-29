@@ -43,9 +43,6 @@ export class AuthController {
   @ApiResponse({ status: 201, description: 'Usuário registrado com sucesso' })
   @ApiResponse({ status: 400, description: 'Dados inválidos' })
   async register(@Body() registerDto: RegisterDto) {
-    this.logger.log(
-      `Requisição de registro recebida para: ${registerDto.email}`,
-    );
     try {
       const { email, password, ...userData } = registerDto;
       const user = await this.authService.registrar(
@@ -53,7 +50,6 @@ export class AuthController {
         password,
         userData as Partial<User>,
       );
-      this.logger.log(`Usuário registrado com sucesso: ${registerDto.email}`);
       return user;
     } catch (error: unknown) {
       const errorMessage =
@@ -70,15 +66,12 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Autenticação bem-sucedida' })
   @ApiResponse({ status: 401, description: 'Credenciais inválidas' })
   async login(@Body() loginDto: LoginDto) {
-    this.logger.log(`Tentativa de login recebida para: ${loginDto.email}`);
     try {
-      console.log('Login attempt with data:', JSON.stringify(loginDto));
 
       if (!loginDto.email || typeof loginDto.email !== 'string') {
         throw new Error('Email inválido ou ausente');
       }
       const result = await this.authService.login(loginDto.email);
-      this.logger.log(`Login bem-sucedido para: ${loginDto.email}`);
       return result;
     } catch (error: unknown) {
       this.logger.error(
@@ -95,17 +88,11 @@ export class AuthController {
   async socialLogin(
     @Body() socialLoginDto: SocialLoginDto,
   ): Promise<{ user: User }> {
-    this.logger.log(
-      `Tentativa de login social para provider: ${socialLoginDto.provider}`,
-    );
     try {
       const { token, provider } = socialLoginDto;
       const userRecord = await this.authService.validarSocialToken(
         token,
         provider,
-      );
-      this.logger.log(
-        `Login social bem-sucedido para provider: ${socialLoginDto.provider}`,
       );
       return { user: userRecord };
     } catch (error: unknown) {
@@ -126,9 +113,6 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Token válido' })
   @ApiResponse({ status: 401, description: 'Token inválido' })
   verifyToken(@Req() request: Request) {
-    this.logger.log(
-      `Verificação de token para usuário: ${(request.user as User)?.email}`,
-    );
     // O token já foi verificado pelo AuthGuard
     return { user: request.user as User };
   }
@@ -139,9 +123,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Obter dados do perfil do usuário autenticado' })
   @ApiResponse({ status: 200, description: 'Dados do usuário' })
   async getProfile(@Req() request: Request) {
-    this.logger.log(
-      `Consulta de perfil para usuário: ${(request.user as User)?.email}`,
-    );
     return { user: request.user as User };
   }
 
@@ -152,12 +133,10 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Perfil atualizado' })
   async updateProfile(@Req() request: Request, @Body() update: Partial<User>) {
     const uid = (request.user as User).uid;
-    this.logger.log(`Atualização de perfil para usuário: ${uid}`);
     try {
       const db = this.authService['firebaseService'].getFirestore();
       await db.collection('users').doc(uid).update(update);
       const userDoc = await db.collection('users').doc(uid).get();
-      this.logger.log(`Perfil atualizado com sucesso para usuário: ${uid}`);
       return { user: userDoc.data() };
     } catch (error) {
       this.logger.error(

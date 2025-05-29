@@ -23,10 +23,10 @@ import {
   ApiConsumes,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
-import type { CreatePublicationDto } from 'src/dto/create-publicacao.dto';
-import type { UpdatePublicationDto } from 'src/dto/update-publicacao.dto';
+import { CreatePublicationDto } from 'src/dto/create-publicacao.dto';
+import { UpdatePublicationDto } from 'src/dto/update-publicacao.dto';
 import { AuthGuard } from 'src/guards/auth.guard';
-import type { Publication } from 'src/models/publicacao.model';
+import { Publication } from 'src/models/publicacao.model';
 import { PublicationService } from 'src/services/publicacoes/publicacao.service';
 import { StorageService } from 'src/services/storage/storage.service';
 
@@ -56,48 +56,50 @@ export class PublicationController {
     private readonly storageService: StorageService,
   ) { }
 
-  @UseGuards(AuthGuard)
   @Post()
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Criar nova publicação de adoção' })
   @ApiConsumes('multipart/form-data')
+  @UseGuards(AuthGuard)
   @UseInterceptors(FilesInterceptor('files', 5)) // Máximo 5 arquivos
-  @ApiResponse({ status: 201, description: 'Publicação criada com sucesso' })
-  @ApiResponse({ status: 401, description: 'Não autorizado' })
   async create(
     @Body() dto: CreatePublicationDto,
     @UploadedFiles() files: UploadedFile[],
     @Req() request: Request,
   ): Promise<Publication> {
     const user = request.user;
-    this.logger.log(`Criando publicação para usuário: ${user.email}`);
 
     try {
       let mediaUrls: string[] = [];
 
       // Upload dos arquivos se houver
       if (files && files.length > 0) {
-        this.logger.log(`Fazendo upload de ${files.length} arquivos`);
         const uploadPromises = files.map((file) =>
           this.storageService.uploadFile(
             file.buffer,
             file.originalname,
-            file.mimetype,
+            // file.mimetype,
           ),
         );
         mediaUrls = await Promise.all(uploadPromises);
       }
 
       // Criar DTO com URLs das mídias
-      const publicationData = {
-        ...dto,
+      const publicationData: CreatePublicationDto = {
+        text: dto.text,
         media: mediaUrls,
       };
 
-      return await this.publicationService.create(publicationData, user.uid, user);
+      const result = await this.publicationService.create(publicationData, user.uid, user);
+
+      return result;
+
     } catch (error) {
       this.logger.error(`Erro ao criar publicação: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        `Erro ao criar publicação: ${error.message}`,
+        HttpStatus.BAD_REQUEST
+      );
     }
   }
 
@@ -107,7 +109,6 @@ export class PublicationController {
   })
   @ApiResponse({ status: 200, description: 'Lista de publicações' })
   async findAll(): Promise<Publication[]> {
-    this.logger.log('Buscando todas as publicações para o feed');
     try {
       return await this.publicationService.findAll();
     } catch (error) {
@@ -123,7 +124,6 @@ export class PublicationController {
   @ApiResponse({ status: 200, description: 'Lista das minhas publicações' })
   async findMy(@Req() request: Request): Promise<Publication[]> {
     const user = request.user;
-    this.logger.log(`Buscando publicações do usuário: ${user.email}`);
 
     try {
       return await this.publicationService.findByUser(user.uid);
@@ -140,8 +140,6 @@ export class PublicationController {
   @ApiResponse({ status: 200, description: 'Publicação encontrada' })
   @ApiResponse({ status: 404, description: 'Publicação não encontrada' })
   async findOne(@Param('id') id: string): Promise<Publication> {
-    this.logger.log(`Buscando publicação: ${id}`);
-
     try {
       const publication = await this.publicationService.findOne(id);
       if (!publication) {
@@ -170,7 +168,6 @@ export class PublicationController {
     @Req() request: Request,
   ): Promise<Publication> {
     const user = request.user;
-    this.logger.log(`Atualizando publicação ${id} pelo usuário: ${user.email}`);
 
     try {
       return await this.publicationService.update(id, dto, user.uid);
@@ -191,7 +188,6 @@ export class PublicationController {
     @Req() request: Request,
   ): Promise<void> {
     const user = request.user;
-    this.logger.log(`Removendo publicação ${id} pelo usuário: ${user.email}`);
 
     try {
       return await this.publicationService.remove(id, user.uid);

@@ -9,7 +9,6 @@ import { FirebaseService } from '../../config/firebase/firebase.service';
 type DocumentData = admin.firestore.DocumentData;
 type DocumentSnapshot = admin.firestore.DocumentSnapshot<DocumentData>;
 type CollectionReference = admin.firestore.CollectionReference<DocumentData>;
-type Query = admin.firestore.Query<DocumentData>;
 
 @Injectable()
 export class PublicationService implements OnModuleInit {
@@ -19,9 +18,14 @@ export class PublicationService implements OnModuleInit {
 
   constructor(private readonly firebaseService: FirebaseService) { }
 
-  onModuleInit() {
-    this.db = this.firebaseService.getFirestore();
-    this.collection = this.db.collection('publications');
+  async onModuleInit() {
+    try {
+      this.db = this.firebaseService.getFirestore();
+      this.collection = this.db.collection('publications');
+    } catch (error) {
+      this.logger.error(`Erro ao inicializar PublicationService: ${error.message}`);
+      throw error;
+    }
   }
 
   private toPlainObject(obj: any): any {
@@ -44,8 +48,8 @@ export class PublicationService implements OnModuleInit {
       isActive: data.isActive as boolean,
       likes: (data.likes as number) || 0,
       comments: (data.comments as number) || 0,
-      createdAt: data.createdAt?.toDate(),
-      updatedAt: data.updatedAt?.toDate(),
+      createdAt: data.createdAt?.toDate() || new Date(),
+      updatedAt: data.updatedAt?.toDate() || new Date(),
     };
 
     return publication;
@@ -56,34 +60,39 @@ export class PublicationService implements OnModuleInit {
     userId: string,
     userInfo: any,
   ): Promise<Publication> {
-    this.logger.log(`Criando publicação para usuário: ${userId}`);
     try {
-      const publicationData = this.toPlainObject(dto);
+      if (!this.collection) {
+        this.logger.error('Coleção não inicializada');
+        throw new Error('Coleção não inicializada');
+      }
+
       const now = admin.firestore.Timestamp.now();
 
-      publicationData.authorId = userId;
-      publicationData.authorName =
-        userInfo.displayName ||
-        `${userInfo.nome || ''} ${userInfo.sobrenome || ''}`.trim() ||
-        'Usuário';
-      publicationData.authorEmail = userInfo.email;
-      publicationData.isActive = true;
-      publicationData.likes = 0;
-      publicationData.comments = 0;
-      publicationData.createdAt = now;
-      publicationData.updatedAt = now;
+      const publicationData = {
+        text: dto.text,
+        media: dto.media || [],
+        authorId: userId,
+        authorName: userInfo.displayName ||
+          `${userInfo.nome || ''} ${userInfo.sobrenome || ''}`.trim() ||
+          'Usuário',
+        authorEmail: userInfo.email,
+        isActive: true,
+        likes: 0,
+        comments: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
 
       const docRef = await this.collection.add(publicationData);
+
       const doc = await docRef.get();
 
       if (!doc.exists) {
-        throw new Error(
-          'Falha ao criar publicação: documento não encontrado após criação',
-        );
+        throw new Error('Falha ao criar publicação: documento não encontrado após criação');
       }
 
-      this.logger.log(`Publicação criada com sucesso: ${doc.id}`);
       return this.toPublication(doc);
+
     } catch (error) {
       this.logger.error(`Erro ao criar publicação: ${error.message}`);
       throw new Error(`Erro ao criar publicação: ${error.message}`);
@@ -91,8 +100,11 @@ export class PublicationService implements OnModuleInit {
   }
 
   async findAll(): Promise<Publication[]> {
-    this.logger.log('Buscando todas as publicações ativas');
     try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
+
       const query = this.collection
         .where('isActive', '==', true)
         .orderBy('createdAt', 'desc');
@@ -100,8 +112,8 @@ export class PublicationService implements OnModuleInit {
       const snapshot = await query.get();
       const publications = snapshot.docs.map((doc) => this.toPublication(doc));
 
-      this.logger.log(`${publications.length} publicações encontradas`);
       return publications;
+
     } catch (error) {
       this.logger.error(`Erro ao buscar publicações: ${error.message}`);
       throw new Error(`Erro ao buscar publicações: ${error.message}`);
@@ -109,8 +121,11 @@ export class PublicationService implements OnModuleInit {
   }
 
   async findByUser(userId: string): Promise<Publication[]> {
-    this.logger.log(`Buscando publicações do usuário: ${userId}`);
+
     try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
       const query = this.collection
         .where('authorId', '==', userId)
         .where('isActive', '==', true)
@@ -119,18 +134,17 @@ export class PublicationService implements OnModuleInit {
       const snapshot = await query.get();
       return snapshot.docs.map((doc) => this.toPublication(doc));
     } catch (error) {
-      this.logger.error(
-        `Erro ao buscar publicações do usuário ${userId}: ${error.message}`,
-      );
-      throw new Error(
-        `Erro ao buscar publicações do usuário: ${error.message}`,
-      );
+      this.logger.error(`Erro ao buscar publicações do usuário ${userId}: ${error.message}`);
+      throw new Error(`Erro ao buscar publicações do usuário: ${error.message}`);
     }
   }
 
   async findOne(id: string): Promise<Publication | null> {
-    this.logger.log(`Buscando publicação: ${id}`);
+
     try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
       const doc = await this.collection.doc(id).get();
       return doc.exists ? this.toPublication(doc) : null;
     } catch (error) {
@@ -144,8 +158,10 @@ export class PublicationService implements OnModuleInit {
     dto: UpdatePublicationDto,
     userId: string,
   ): Promise<Publication> {
-    this.logger.log(`Atualizando publicação: ${id} pelo usuário: ${userId}`);
     try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
       const docRef = this.collection.doc(id);
       const doc = await docRef.get();
 
@@ -158,13 +174,14 @@ export class PublicationService implements OnModuleInit {
         throw new Error('Usuário não autorizado a editar esta publicação');
       }
 
-      const updateData = this.toPlainObject(dto);
-      updateData.updatedAt = admin.firestore.Timestamp.now();
+      const updateData = {
+        ...dto,
+        updatedAt: admin.firestore.Timestamp.now(),
+      };
 
       await docRef.update(updateData);
       const updatedDoc = await docRef.get();
 
-      this.logger.log(`Publicação atualizada com sucesso: ${id}`);
       return this.toPublication(updatedDoc);
     } catch (error) {
       this.logger.error(`Erro ao atualizar publicação ${id}: ${error.message}`);
@@ -173,8 +190,11 @@ export class PublicationService implements OnModuleInit {
   }
 
   async remove(id: string, userId: string): Promise<void> {
-    this.logger.log(`Removendo publicação: ${id} pelo usuário: ${userId}`);
     try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
+
       const docRef = this.collection.doc(id);
       const doc = await docRef.get();
 
@@ -193,7 +213,6 @@ export class PublicationService implements OnModuleInit {
         updatedAt: admin.firestore.Timestamp.now(),
       });
 
-      this.logger.log(`Publicação removida com sucesso: ${id}`);
     } catch (error) {
       this.logger.error(`Erro ao remover publicação ${id}: ${error.message}`);
       throw new Error(`Erro ao remover publicação: ${error.message}`);
