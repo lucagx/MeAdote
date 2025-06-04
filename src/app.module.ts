@@ -6,18 +6,20 @@ import { AppService } from './app.service';
 import { FirebaseModule } from './config/firebase/firebase.module';
 import { AnimaisModule } from './services/animais/animais.module';
 import { AuthModule } from './services/auth/auth.module';
+import { PublicationsModule } from './services/publicacoes/publicacao.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env', 
+      envFilePath: '.env',
     }),
     FirebaseModule,
     AuthModule,
     AnimaisModule,
+    PublicationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

@@ -7,10 +7,16 @@ export class FirebaseService implements OnModuleInit {
   private firebaseApp: admin.app.App;
   private readonly logger = new Logger(FirebaseService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
-  async onModuleInit(): Promise<admin.app.App> {
+  async onModuleInit(): Promise<void> {
     try {
+      // Verificar se já existe uma instância
+      if (admin.apps.length > 0) {
+        this.firebaseApp = admin.apps[0]!;
+        return;
+      }
+
       const serviceAccount = {
         projectId: this.configService.get<string>('FIREBASE_PROJECT_ID'),
         privateKeyId: this.configService.get<string>('FIREBASE_PRIVATE_KEY_ID'),
@@ -29,39 +35,31 @@ export class FirebaseService implements OnModuleInit {
         ),
       };
 
-      this.logger.log(
-        `Firebase initialization with projectId: ${serviceAccount.projectId}`,
-      );
+      // Verificar se as credenciais essenciais estão presentes
+      if (!serviceAccount.projectId || !serviceAccount.privateKey || !serviceAccount.clientEmail) {
+        this.logger.warn('Credenciais do Firebase não encontradas, tentando applicationDefault()');
 
-      let app: admin.app.App;
+        // Fallback para applicationDefault se as variáveis não estiverem configuradas
+        this.firebaseApp = admin.initializeApp({
+          credential: admin.credential.applicationDefault(),
+        });
+      } else {
+        // Usar credenciais das variáveis de ambiente
+        this.firebaseApp = admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+        });
+      }
+      ;
 
+      // Testar conexão com Firestore
+      const db = this.getFirestore();
       try {
-        app = admin.app('me-adote-app');
-        this.logger.log('Firebase app retrieved successfully');
-      } catch (appError) {
-        this.logger.debug(
-          'App not found, creating new Firebase app instance',
-          appError instanceof Error ? appError.message : String(appError),
-        );
-
-        app = admin.initializeApp(
-          {
-            credential: admin.credential.cert(
-              serviceAccount as admin.ServiceAccount,
-            ),
-          },
-          'me-adote-app',
-        );
-        this.logger.log('Firebase app initialized successfully');
+        await db.collection('_healthcheck_').doc('ping').get();
+        this.logger.log('Conexão com Firestore verificada com sucesso (via leitura de teste).');
+      } catch (pingError) {
+        this.logger.warn(`Teste de ping no Firestore encontrou um problema (pode ser normal se a coleção/documento não existir): ${pingError.message}`);
       }
 
-      this.firebaseApp = app;
-
-      if (!this.firebaseApp) {
-        throw new Error('Firebase app não foi inicializado');
-      }
-
-      return this.firebaseApp;
     } catch (error) {
       this.logger.error(
         'Firebase initialization error:',
@@ -71,21 +69,21 @@ export class FirebaseService implements OnModuleInit {
     }
   }
 
-  getFirestore() {
+  getFirestore(): admin.firestore.Firestore {
     if (!this.firebaseApp) {
       throw new Error('Firebase app não foi inicializado');
     }
     return this.firebaseApp.firestore();
   }
 
-  getAuth() {
+  getAuth(): admin.auth.Auth {
     if (!this.firebaseApp) {
       throw new Error('Firebase app não foi inicializado');
     }
     return this.firebaseApp.auth();
   }
 
-  getStorage() {
+  getStorage(): admin.storage.Storage {
     if (!this.firebaseApp) {
       throw new Error('Firebase app não foi inicializado');
     }
