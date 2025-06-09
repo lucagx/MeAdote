@@ -7,6 +7,7 @@ import { FirebaseModule } from './config/firebase/firebase.module';
 import { AnimaisModule } from './services/animais/animais.module';
 import { AuthModule } from './services/auth/auth.module';
 import { PublicationsModule } from './services/publicacoes/publicacao.module';
+import { AdoptionModule } from './services/adocao/adocao.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PublicationsModule } from './services/publicacoes/publicacao.module';
     AuthModule,
     AnimaisModule,
     PublicationsModule,
+    AdoptionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

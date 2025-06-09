@@ -9,21 +9,34 @@ import {
   Get,
   Put,
   Logger,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiConsumes,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Request } from 'express';
 
-import { RegisterDto } from '../../dto/register.dto';
-import { User } from '../../models/user.model';
-import { LoginDto } from '../../dto/login.dto';
 import { AuthService } from '../../services/auth/auth.service';
+import { StorageService } from '../../services/storage/storage.service';
 import { AuthGuard } from '../../guards/auth.guard';
+import type { User } from '../../models/user.model';
+import { LoginDto } from '../../dto/login.dto';
 import { SocialLoginDto } from '../../dto/social-login.dto';
+
+interface UploadedFile {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  buffer: Buffer;
+  size: number;
+}
 
 declare module 'express' {
   export interface Request {
@@ -36,28 +49,125 @@ declare module 'express' {
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) { }
+  constructor(
+    private readonly authService: AuthService,
+    private readonly storageService: StorageService,
+  ) { }
 
   @Post('register')
-  @ApiOperation({ summary: 'Registrar um novo usuário' })
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Registrar novo usuário' })
   @ApiResponse({ status: 201, description: 'Usuário registrado com sucesso' })
-  @ApiResponse({ status: 400, description: 'Dados inválidos' })
-  async register(@Body() registerDto: RegisterDto) {
+  @UseGuards(AuthGuard)
+  async register(@Req() request: Request, @Body() userData: any) {
+    const user = request.user;
+
     try {
-      const { email, password, ...userData } = registerDto;
-      const user = await this.authService.registrar(
-        email,
-        password,
-        userData as Partial<User>,
+      const newUser = await this.authService.createUser({
+        uid: user.uid,
+        email: user.email,
+        ...userData,
+      });
+
+      return {
+        message: 'Usuário registrado com sucesso',
+        user: newUser,
+      };
+    } catch (error) {
+      this.logger.error(`Erro ao registrar usuário: ${error.message}`);
+      throw new HttpException(
+        'Erro ao registrar usuário',
+        HttpStatus.BAD_REQUEST,
       );
-      return user;
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Erro ao cadastrar usuário';
-      this.logger.error(
-        `Erro ao registrar usuário ${registerDto.email}: ${errorMessage}`,
+    }
+  }
+
+  @Get('me')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Obter dados do usuário logado' })
+  @ApiResponse({ status: 200, description: 'Dados do usuário' })
+  @UseGuards(AuthGuard)
+  async getMe(@Req() request: Request) {
+    const user = request.user;
+
+    try {
+      const userData = await this.authService.getUserByUid(user.uid);
+      return { user: userData };
+    } catch (error) {
+      this.logger.error(`Erro ao buscar usuário: ${error.message}`);
+      throw new HttpException(
+        'Usuário não encontrado',
+        HttpStatus.NOT_FOUND,
       );
-      throw new HttpException(errorMessage, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Put('me')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Atualizar dados do usuário logado' })
+  @ApiResponse({ status: 200, description: 'Dados atualizados com sucesso' })
+  @UseGuards(AuthGuard)
+  async updateMe(@Req() request: Request, @Body() updateData: any) {
+    const user = request.user;
+
+    try {
+      const updatedUser = await this.authService.updateUser(user.uid, updateData);
+      return {
+        message: 'Dados atualizados com sucesso',
+        user: updatedUser,
+      };
+    } catch (error) {
+      this.logger.error(`Erro ao atualizar usuário: ${error.message}`);
+      throw new HttpException(
+        'Erro ao atualizar dados',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post('profile-photo')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Upload de foto de perfil' })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 200, description: 'Foto de perfil atualizada com sucesso' })
+  @UseGuards(AuthGuard)
+  @UseInterceptors(FileInterceptor('profilePhoto'))
+  async uploadProfilePhoto(
+    @UploadedFile() file: UploadedFile,
+    @Req() request: Request,
+  ) {
+    const user = request.user;
+
+    try {
+      if (!file) {
+        throw new HttpException('Nenhum arquivo foi enviado', HttpStatus.BAD_REQUEST);
+      }
+
+      if (!file.mimetype.startsWith('image/')) {
+        throw new HttpException('Apenas arquivos de imagem são permitidos', HttpStatus.BAD_REQUEST);
+      }
+
+      const photoUrl = await this.storageService.uploadFile(
+        file.buffer,
+        `profile_${user.uid}_${file.originalname}`,
+      );
+
+      const updatedUser = await this.authService.updateUser(user.uid, {
+        profilePhoto: photoUrl,
+      });
+
+      return {
+        message: 'Foto de perfil atualizada com sucesso',
+        profilePhoto: photoUrl,
+        user: updatedUser,
+      };
+
+    } catch (error) {
+      this.logger.error(`Erro ao fazer upload da foto de perfil: ${error.message}`);
+      throw new HttpException(
+        'Erro ao fazer upload da foto de perfil',
+        HttpStatus.BAD_REQUEST,
+      );
     }
   }
 
@@ -115,37 +225,5 @@ export class AuthController {
   verifyToken(@Req() request: Request) {
     // O token já foi verificado pelo AuthGuard
     return { user: request.user as User };
-  }
-
-  @UseGuards(AuthGuard)
-  @Get('me')
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Obter dados do perfil do usuário autenticado' })
-  @ApiResponse({ status: 200, description: 'Dados do usuário' })
-  async getProfile(@Req() request: Request) {
-    return { user: request.user as User };
-  }
-
-  @UseGuards(AuthGuard)
-  @Put('me')
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Atualizar dados do perfil do usuário autenticado' })
-  @ApiResponse({ status: 200, description: 'Perfil atualizado' })
-  async updateProfile(@Req() request: Request, @Body() update: Partial<User>) {
-    const uid = (request.user as User).uid;
-    try {
-      const db = this.authService['firebaseService'].getFirestore();
-      await db.collection('users').doc(uid).update(update);
-      const userDoc = await db.collection('users').doc(uid).get();
-      return { user: userDoc.data() };
-    } catch (error) {
-      this.logger.error(
-        `Erro ao atualizar perfil do usuário ${uid}: ${error instanceof Error ? error.message : error}`,
-      );
-      throw new HttpException(
-        'Erro ao atualizar perfil',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
   }
 }

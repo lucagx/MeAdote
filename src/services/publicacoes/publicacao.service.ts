@@ -45,9 +45,11 @@ export class PublicationService implements OnModuleInit {
       authorId: data.authorId as string,
       authorName: data.authorName as string,
       authorEmail: data.authorEmail as string,
+      authorProfilePhoto: data.authorProfilePhoto as string,
       isActive: data.isActive as boolean,
       likes: (data.likes as number) || 0,
       comments: (data.comments as number) || 0,
+      likedBy: (data.likedBy as string[]) || [],
       createdAt: data.createdAt?.toDate() || new Date(),
       updatedAt: data.updatedAt?.toDate() || new Date(),
     };
@@ -72,13 +74,15 @@ export class PublicationService implements OnModuleInit {
         text: dto.text,
         media: dto.media || [],
         authorId: userId,
-        authorName: userInfo.displayName ||
-          `${userInfo.nome || ''} ${userInfo.sobrenome || ''}`.trim() ||
+        authorName: userInfo.displayName ??
+          `${userInfo.nome ?? ''} ${userInfo.sobrenome ?? ''}`.trim() ??
           'Usuário',
         authorEmail: userInfo.email,
+        authorProfilePhoto: userInfo.profilePhoto ?? null,
         isActive: true,
         likes: 0,
         comments: 0,
+        likedBy: [],
         createdAt: now,
         updatedAt: now,
       };
@@ -153,6 +157,168 @@ export class PublicationService implements OnModuleInit {
     }
   }
 
+  async toggleLike(publicationId: string, userId: string): Promise<Publication> {
+    try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
+
+      const docRef = this.collection.doc(publicationId);
+      const doc = await docRef.get();
+
+      if (!doc.exists) {
+        throw new Error(`Publicação com ID ${publicationId} não encontrada`);
+      }
+
+      const data = doc.data();
+      const likedBy = (data?.likedBy as string[]) || [];
+      const currentLikes = (data?.likes as number) || 0;
+
+      let newLikedBy: string[];
+      let newLikes: number;
+
+      if (likedBy.includes(userId)) {
+        // Remove like
+        newLikedBy = likedBy.filter(id => id !== userId);
+        newLikes = Math.max(0, currentLikes - 1);
+      } else {
+        // Adiciona like
+        newLikedBy = [...likedBy, userId];
+        newLikes = currentLikes + 1;
+      }
+
+      await docRef.update({
+        likedBy: newLikedBy,
+        likes: newLikes,
+        updatedAt: admin.firestore.Timestamp.now(),
+      });
+
+      const updatedDoc = await docRef.get();
+      return this.toPublication(updatedDoc);
+
+    } catch (error) {
+      this.logger.error(`Erro ao curtir/descurtir publicação ${publicationId}: ${error.message}`);
+      throw new Error(`Erro ao curtir/descurtir publicação: ${error.message}`);
+    }
+  }
+
+  async addComment(publicationId: string, userId: string, userInfo: any, text: string): Promise<Publication> {
+    try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
+
+      const docRef = this.collection.doc(publicationId);
+      const doc = await docRef.get();
+
+      if (!doc.exists) {
+        throw new Error(`Publicação com ID ${publicationId} não encontrada`);
+      }
+
+      // Criar o comentário na subcoleção
+      const commentData = {
+        text,
+        authorId: userId,
+        authorName: userInfo.displayName ||
+          `${userInfo.nome || ''} ${userInfo.sobrenome || ''}`.trim() ||
+          'Usuário',
+        authorProfilePhoto: userInfo.profilePhoto || null,
+        publicationId,
+        createdAt: admin.firestore.Timestamp.now(),
+      };
+
+      // Adicionar comentário na subcoleção
+      await docRef.collection('comments').add(commentData);
+
+      const commentsSnapshot = await docRef.collection('comments').get();
+      const realCommentsCount = commentsSnapshot.size;
+
+      await docRef.update({
+        comments: realCommentsCount,
+        updatedAt: admin.firestore.Timestamp.now(),
+      });
+
+      const updatedDoc = await docRef.get();
+      return this.toPublication(updatedDoc);
+
+    } catch (error) {
+      this.logger.error(`Erro ao comentar publicação ${publicationId}: ${error.message}`);
+      throw new Error(`Erro ao comentar publicação: ${error.message}`);
+    }
+  }
+
+  async getComments(publicationId: string): Promise<any[]> {
+    try {
+      if (!this.db) {
+        throw new Error('Banco não inicializado');
+      }
+
+      // Buscar comentários na subcoleção
+      const commentsRef = this.db
+        .collection('publications')
+        .doc(publicationId)
+        .collection('comments');
+
+      const snapshot = await commentsRef
+        .orderBy('createdAt', 'desc')
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate()?.toISOString() || new Date().toISOString(),
+      }));
+
+    } catch (error) {
+      this.logger.error(`Erro ao buscar comentários da publicação ${publicationId}: ${error.message}`);
+      throw new Error(`Erro ao buscar comentários: ${error.message}`);
+    }
+  }
+
+  async deleteComment(publicationId: string, commentId: string, userId: string): Promise<void> {
+    try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
+
+      const docRef = this.collection.doc(publicationId);
+      const doc = await docRef.get();
+
+      if (!doc.exists) {
+        throw new Error(`Publicação com ID ${publicationId} não encontrada`);
+      }
+
+      const commentRef = docRef.collection('comments').doc(commentId);
+      const commentDoc = await commentRef.get();
+
+      if (!commentDoc.exists) {
+        throw new Error('Comentário não encontrado');
+      }
+
+      const commentData = commentDoc.data();
+      if (!commentData || commentData.authorId !== userId) {
+        throw new Error('Usuário não autorizado a deletar este comentário');
+      }
+
+      // Deletar o comentário
+      await commentRef.delete();
+
+      // Atualizar contador de comentários
+      const commentsSnapshot = await docRef.collection('comments').get();
+      const realCommentsCount = commentsSnapshot.size;
+
+      await docRef.update({
+        comments: realCommentsCount,
+        updatedAt: admin.firestore.Timestamp.now(),
+      });
+
+      this.logger.log(`Comentário ${commentId} deletado da publicação ${publicationId}`);
+
+    } catch (error) {
+      this.logger.error(`Erro ao deletar comentário: ${error.message}`);
+      throw new Error(`Erro ao deletar comentário: ${error.message}`);
+    }
+  }
   async update(
     id: string,
     dto: UpdatePublicationDto,
@@ -216,6 +382,62 @@ export class PublicationService implements OnModuleInit {
     } catch (error) {
       this.logger.error(`Erro ao remover publicação ${id}: ${error.message}`);
       throw new Error(`Erro ao remover publicação: ${error.message}`);
+    }
+  }
+
+  async fixCommentsCounter(publicationId: string): Promise<void> {
+    try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
+
+      const docRef = this.collection.doc(publicationId);
+      const doc = await docRef.get();
+
+      if (!doc.exists) {
+        throw new Error(`Publicação com ID ${publicationId} não encontrada`);
+      }
+
+      const commentsSnapshot = await docRef.collection('comments').get();
+      const realCommentsCount = commentsSnapshot.size;
+
+      await docRef.update({
+        comments: realCommentsCount,
+        updatedAt: admin.firestore.Timestamp.now(),
+      });
+
+      this.logger.log(`Contador de comentários corrigido para publicação ${publicationId}: ${realCommentsCount}`);
+
+    } catch (error) {
+      this.logger.error(`Erro ao corrigir contador de comentários: ${error.message}`);
+      throw new Error(`Erro ao corrigir contador: ${error.message}`);
+    }
+  }
+
+  async fixAllCommentsCounters(): Promise<void> {
+    try {
+      if (!this.collection) {
+        throw new Error('Coleção não inicializada');
+      }
+
+      const snapshot = await this.collection.where('isActive', '==', true).get();
+
+      const fixes = snapshot.docs.map(async (doc) => {
+        const commentsSnapshot = await doc.ref.collection('comments').get();
+        const realCommentsCount = commentsSnapshot.size;
+
+        return doc.ref.update({
+          comments: realCommentsCount,
+          updatedAt: admin.firestore.Timestamp.now(),
+        });
+      });
+
+      await Promise.all(fixes);
+      this.logger.log(`Contadores de comentários corrigidos para ${snapshot.size} publicações`);
+
+    } catch (error) {
+      this.logger.error(`Erro ao corrigir todos os contadores: ${error.message}`);
+      throw new Error(`Erro ao corrigir contadores: ${error.message}`);
     }
   }
 }

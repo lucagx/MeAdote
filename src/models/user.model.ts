@@ -4,6 +4,7 @@ export interface User {
   nome?: string;
   sobrenome?: string;
   telefone?: string;
+  profilePhoto?: string;
   displayName?: string;
   userType?: 'adotante' | 'abrigo';
   address?: string;

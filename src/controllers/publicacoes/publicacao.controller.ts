@@ -13,6 +13,7 @@ import {
   Logger,
   UploadedFiles,
   UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -78,7 +79,6 @@ export class PublicationController {
           this.storageService.uploadFile(
             file.buffer,
             file.originalname,
-            // file.mimetype,
           ),
         );
         mediaUrls = await Promise.all(uploadPromises);
@@ -153,6 +153,109 @@ export class PublicationController {
       if (error instanceof HttpException) throw error;
       this.logger.error(`Erro ao buscar publicação: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @UseGuards(AuthGuard)
+  @Post(':id/like')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Curtir/descurtir publicação' })
+  @ApiResponse({ status: 200, description: 'Like processado com sucesso' })
+  async toggleLike(
+    @Param('id') id: string,
+    @Req() request: Request,
+  ): Promise<Publication> {
+    const user = request.user;
+
+    try {
+      return await this.publicationService.toggleLike(id, user.uid);
+    } catch (error) {
+      this.logger.error(`Erro ao processar like: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @UseGuards(AuthGuard)
+  @Post(':id/comment')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Comentar em publicação' })
+  @ApiResponse({ status: 200, description: 'Comentário adicionado com sucesso' })
+  async addComment(
+    @Param('id') id: string,
+    @Body() dto: { text: string },
+    @Req() request: Request,
+  ): Promise<Publication> {
+    const user = request.user;
+
+    try {
+      return await this.publicationService.addComment(id, user.uid, user, dto.text);
+    } catch (error) {
+      this.logger.error(`Erro ao comentar: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Get(':id/comments')
+  @ApiOperation({ summary: 'Buscar comentários de uma publicação' })
+  @ApiResponse({ status: 200, description: 'Lista de comentários' })
+  async getComments(@Param('id') id: string): Promise<any[]> {
+    try {
+      return await this.publicationService.getComments(id);
+    } catch (error) {
+      this.logger.error(`Erro ao buscar comentários: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @UseGuards(AuthGuard)
+  @Delete(':id/comments/:commentId')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Deletar comentário (apenas autor do comentário)' })
+  @ApiResponse({ status: 200, description: 'Comentário deletado com sucesso' })
+  @ApiResponse({ status: 403, description: 'Não autorizado' })
+  async deleteComment(
+    @Param('id') publicationId: string,
+    @Param('commentId') commentId: string,
+    @Req() request: Request,
+  ): Promise<{ message: string }> {
+    const user = request.user;
+
+    try {
+      await this.publicationService.deleteComment(publicationId, commentId, user.uid);
+      return { message: 'Comentário deletado com sucesso' };
+    } catch (error) {
+      this.logger.error(`Erro ao deletar comentário: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.FORBIDDEN);
+    }
+  }
+
+  @UseGuards(AuthGuard)
+  @Post(':id/fix-comments')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Corrigir contador de comentários de uma publicação' })
+  @ApiResponse({ status: 200, description: 'Contador corrigido' })
+  async fixCommentsCounter(@Param('id') id: string): Promise<{ message: string }> {
+    try {
+      await this.publicationService.fixCommentsCounter(id);
+      return { message: 'Contador de comentários corrigido com sucesso' };
+    } catch (error) {
+      this.logger.error(`Erro ao corrigir contador: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @UseGuards(AuthGuard)
+  @Post('fix-all-comments')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Corrigir contadores de comentários de todas as publicações' })
+  @ApiResponse({ status: 200, description: 'Contadores corrigidos' })
+  async fixAllCommentsCounters(): Promise<{ message: string }> {
+    try {
+      await this.publicationService.fixAllCommentsCounters();
+      return { message: 'Todos os contadores corrigidos com sucesso' };
+    } catch (error) {
+      this.logger.error(`Erro ao corrigir contadores: ${error.message}`);
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
   }
 

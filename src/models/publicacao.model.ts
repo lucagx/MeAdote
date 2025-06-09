@@ -5,9 +5,11 @@ export interface Publication {
   authorId: string; // UID do usuário que criou
   authorName: string; // Nome do autor para exibição
   authorEmail: string; // Email do autor
+  authorProfilePhoto?: string; // URL da foto de perfil do autor
   createdAt: Date;
   updatedAt: Date;
   isActive: boolean;
-  likes?: number; // Futuro: contador de curtidas
-  comments?: number; // Futuro: contador de comentários
+  likes?: number; // Contador de curtidas
+  comments?: number; // Contador de comentários
+  likedBy?: string[]; // UIDs dos usuários que curtiram
 }

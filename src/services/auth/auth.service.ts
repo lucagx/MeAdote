@@ -148,4 +148,56 @@ export class AuthService {
       throw new Error(`Falha na autenticação com ${provider}`);
     }
   }
+
+  async createUser(userData: Partial<User>): Promise<User> {
+    try {
+      const db = this.firebaseService.getFirestore();
+      const userDoc = {
+        ...userData,
+        createdAt: new Date(),
+        userType: userData.userType ?? 'adotante',
+      };
+
+      if (!userData.uid) {
+        throw new Error('UID do usuário é obrigatório para criar o documento.');
+      }
+      await db.collection('users').doc(userData.uid).set(userDoc);
+      return userDoc as User;
+    } catch (error) {
+      this.logger.error(`Erro ao criar usuário: ${error.message}`);
+      throw new Error('Erro ao criar usuário');
+    }
+  }
+
+  async getUserByUid(uid: string): Promise<User | null> {
+    try {
+      const db = this.firebaseService.getFirestore();
+      const doc = await db.collection('users').doc(uid).get();
+
+      if (!doc.exists) {
+        return null;
+      }
+
+      return { uid, ...doc.data() } as User;
+    } catch (error) {
+      this.logger.error(`Erro ao buscar usuário ${uid}: ${error.message}`);
+      throw new Error('Erro ao buscar usuário');
+    }
+  }
+
+  async updateUser(uid: string, updateData: Partial<User>): Promise<User> {
+    try {
+      const db = this.firebaseService.getFirestore();
+      await db.collection('users').doc(uid).update({
+        ...updateData,
+        updatedAt: new Date(),
+      });
+
+      const updatedDoc = await db.collection('users').doc(uid).get();
+      return { uid, ...updatedDoc.data() } as User;
+    } catch (error) {
+      this.logger.error(`Erro ao atualizar usuário ${uid}: ${error.message}`);
+      throw new Error('Erro ao atualizar usuário');
+    }
+  }
 }
