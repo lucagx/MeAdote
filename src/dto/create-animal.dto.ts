@@ -1,4 +1,5 @@
-import { IsString, IsInt, IsOptional, IsEnum } from 'class-validator';
+import { IsString, IsInt, IsOptional, IsEnum, IsBoolean } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export enum Porte {
@@ -8,36 +9,69 @@ export enum Porte {
 }
 
 export class CreateAnimalDto {
-  @ApiProperty()
+  @ApiProperty({ description: 'Nome do animal' })
   @IsString()
   nome: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Espécie do animal' })
   @IsString()
   especie: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Raça do animal' })
   @IsString()
   raca: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Idade do animal em anos' })
+  @Transform(({ value }) => parseInt(value))
   @IsInt()
   idade: number;
 
-  @ApiProperty({ enum: Porte })
+  @ApiProperty({ enum: Porte, description: 'Porte do animal' })
   @IsEnum(Porte)
   porte: Porte;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'Localização do animal' })
   @IsString()
   localizacao: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'ID do abrigo/ONG' })
   @IsString()
   abrigoId: string;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ description: 'Nome do abrigo/ONG', required: false })
+  @IsOptional()
+  @IsString()
+  abrigoNome?: string;
+
+  @ApiProperty({ description: 'Descrição do animal', required: false })
   @IsOptional()
   @IsString()
   descricao?: string;
+
+  @ApiProperty({ description: 'URL da foto do animal', required: false })
+  @IsOptional()
+  @IsString()
+  foto?: string;
+
+  @ApiProperty({ description: 'Se o animal é vacinado', required: false })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return value === 'true';
+    }
+    return Boolean(value);
+  })
+  @IsBoolean()
+  vacinado?: boolean;
+
+  @ApiProperty({ description: 'Se o animal é castrado', required: false })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return value === 'true';
+    }
+    return Boolean(value);
+  })
+  @IsBoolean()
+  castrado?: boolean;
 }

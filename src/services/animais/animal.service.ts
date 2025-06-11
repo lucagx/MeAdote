@@ -7,7 +7,6 @@ import * as admin from 'firebase-admin';
 
 type DocumentData = admin.firestore.DocumentData;
 type DocumentSnapshot = admin.firestore.DocumentSnapshot<DocumentData>;
-type DocumentReference = admin.firestore.DocumentReference<DocumentData>;
 type CollectionReference = admin.firestore.CollectionReference<DocumentData>;
 type Query = admin.firestore.Query<DocumentData>;
 
@@ -16,7 +15,7 @@ export class AnimalService implements OnModuleInit {
   private db: admin.firestore.Firestore;
   private collection: CollectionReference;
 
-  constructor(private readonly firebaseService: FirebaseService) {}
+  constructor(private readonly firebaseService: FirebaseService) { }
 
   async onModuleInit() {
     this.db = this.firebaseService.getFirestore();
@@ -33,14 +32,18 @@ export class AnimalService implements OnModuleInit {
       throw new Error(`Documento ${doc.id} não contém dados`);
     }
 
-    // Verificação de tipo segura
     const animal: Animal = {
       id: doc.id,
       nome: data.nome as string,
       especie: data.especie as string,
       raca: data.raca as string,
       idade: data.idade as number,
+      porte: data.porte as 'pequeno' | 'médio' | 'grande',
+      localizacao: data.localizacao as string,
+      abrigoId: data.abrigoId as string,
+      abrigoNome: data.abrigoNome as string,
       descricao: data.descricao as string,
+      foto: data.foto as string,
       vacinado: data.vacinado as boolean,
       castrado: data.castrado as boolean,
       createdAt: data.createdAt?.toDate(),
@@ -59,7 +62,7 @@ export class AnimalService implements OnModuleInit {
 
       const docRef = await this.collection.add(animalData);
       const doc = await docRef.get();
-      
+
       if (!doc.exists) {
         throw new Error('Falha ao criar animal: documento não encontrado após criação');
       }
@@ -83,7 +86,7 @@ export class AnimalService implements OnModuleInit {
         });
       }
 
-      const snapshot = await query.get();
+      const snapshot = await query.orderBy('createdAt', 'desc').get();
       return snapshot.docs.map(doc => this.toAnimal(doc));
     } catch (error) {
       throw new Error(`Erro ao buscar animais: ${error.message}`);
@@ -103,7 +106,7 @@ export class AnimalService implements OnModuleInit {
     try {
       const docRef = this.collection.doc(id);
       const updateData = this.toPlainObject(dto);
-      
+
       updateData.updatedAt = admin.firestore.Timestamp.now();
 
       await docRef.update(updateData);
